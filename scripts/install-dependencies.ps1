@@ -1,0 +1,1 @@
+git clone https://github.com/libsdl-org/SDL dependencies/SDL --depth 1

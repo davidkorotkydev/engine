@@ -1,0 +1,6 @@
+.vscode/
+bin/
+build/
+dependencies/*/
+.DS_Store
+imgui.ini
