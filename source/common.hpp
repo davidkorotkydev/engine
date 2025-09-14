@@ -8,6 +8,6 @@
 #define CHECK(RESULT) \
     do { \
         VkResult result = RESULT; \
-        if (result) throw std::runtime_error("A Vulkan error was detected.\n" + string_VkResult(result) + "\n"); \
+        if (result) throw std::runtime_error("A Vulkan error was detected.\n" + std::string(string_VkResult(result)) + "\n"); \
     } while (0)
 // clang-format on

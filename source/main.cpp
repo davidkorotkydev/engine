@@ -9,9 +9,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     {
         engine.initialize();
     }
-    catch (const std::exception &e)
+    catch (const std::exception &exception)
     {
-        fprintf(stderr, "%s\n", e.what());
+        fprintf(stderr, "%s\n", exception.what());
         return SDL_APP_FAILURE;
     }
 

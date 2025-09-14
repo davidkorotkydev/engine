@@ -25,7 +25,9 @@ class Engine
 
         /* # `initialize` # */
 
-        void initialize_sdl();
+        void create_window();
         /* * */ SDL_Window *p_window{nullptr};
         /* * */ VkExtent2D window_extent{512 * 2, 342 * 2};
+        void create_instance();
+        /* * */ VkInstance instance;
 };
