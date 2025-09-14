@@ -4,6 +4,7 @@ void Engine::initialize()
 {
     create_window();
     create_instance();
+    create_debug_utils_messenger();
 }
 
 void Engine::create_window()
@@ -16,6 +17,8 @@ void Engine::create_window()
 
 void Engine::create_instance()
 {
+    if (validation_layers_enabled && !validation_layers_supported()) throw std::runtime_error("The requested validation layers are not supported.");
+
     VkApplicationInfo application_info{
         .sType{VK_STRUCTURE_TYPE_APPLICATION_INFO},
         // .pNext{},
@@ -46,7 +49,7 @@ void Engine::create_instance()
     extension_names[extension_count - 1] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
 #endif /* __APPLE__ */
     SDL_memcpy(&extension_names[1], instance_extensions, instance_extension_count * sizeof(const char *));
-    for (int i{0}; i < instance_extension_count; i++) fprintf(stdout, "%s\n", extension_names[i]);
+    // for (int i{0}; i < instance_extension_count; i++) fprintf(stdout, "%s\n", extension_names[i]);
 
     VkInstanceCreateInfo create_info{
         .sType{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO},
@@ -59,8 +62,45 @@ void Engine::create_instance()
         .ppEnabledExtensionNames{extension_names},
     };
 
+    if (validation_layers_enabled)
+    {
+        create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers.size());
+        create_info.ppEnabledLayerNames = validation_layers.data();
+    }
+
     CHECK(vkCreateInstance(&create_info, nullptr, &instance));
     SDL_free(extension_names);
+}
+
+bool Engine::validation_layers_supported()
+{
+    uint32_t property_count;
+    vkEnumerateInstanceLayerProperties(&property_count, nullptr);
+    std::vector<VkLayerProperties> layer_properties(property_count);
+    vkEnumerateInstanceLayerProperties(&property_count, layer_properties.data());
+    // for (int i{0}; i < property_count; i++) fprintf(stdout, "%s\n", layer_properties[i].layerName);
+
+    for (const auto &validation_layer : validation_layers)
+    {
+        bool layer_found{false};
+
+        for (const auto &layer_property : layer_properties)
+        {
+            if (strcmp(validation_layer, layer_property.layerName) == 0)
+            {
+                layer_found = true;
+                break;
+            }
+        }
+
+        if (!layer_found) return false;
+    }
+
+    return true;
+}
+
+void Engine::create_debug_utils_messenger()
+{
 }
 
 void Engine::draw()

@@ -34,4 +34,12 @@ class Engine
         /* * */ VkExtent2D window_extent{512 * 2, 342 * 2};
         void create_instance();
         /* * */ VkInstance instance;
+#ifdef NDEBUG
+        /* * */ const bool validation_layers_enabled{false};
+#else
+        /* * */ const bool validation_layers_enabled{true};
+#endif
+        /* * */ bool validation_layers_supported();
+        /* * */ /* * */ const std::vector<const char *> validation_layers{"VK_LAYER_KHRONOS_validation"};
+        void create_debug_utils_messenger();
 };
