@@ -4,6 +4,10 @@
     - `std::runtime_error` [[.](https://en.cppreference.com/w/cpp/error/runtime_error.html)]
 */
 #include <stdexcept>
+/*
+    - `std::vector` [[.](https://en.cppreference.com/w/cpp/container/vector.html)]
+*/
+#include <vector>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>

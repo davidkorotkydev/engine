@@ -21,3 +21,7 @@ endif()
 message(STATUS "CMAKE_C_COMPILER ${CMAKE_C_COMPILER}")
 message(STATUS "CMAKE_CXX_COMPILER ${CMAKE_CXX_COMPILER}")
 message(STATUS "CMAKE_CXX_COMPILER_ID ${CMAKE_CXX_COMPILER_ID}")
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL AppleClang)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wno-braced-scalar-init)
+endif()
