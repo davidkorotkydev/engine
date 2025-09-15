@@ -42,6 +42,8 @@ void Engine::create_instance()
     flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     /* Add one for `VK_KHR_portability_enumeration` [[.](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_portability_enumeration.html)]. */
     extension_count += 1;
+    /* Add one for `VK_KHR_get_physical( ... )2` [[.](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_get_physical_device_properties2.html)]. `VK_KHR_get_physical( ... )2` is a dependency of the `VK_KHR_portability_subset` device extension, which is required by `vkCreateDevice` on macOS. */
+    extension_count += 1;
 #endif /* __APPLE__ */
     const char **extension_names{(const char **)SDL_malloc(extension_count * sizeof(const char *))};
     /* Add this to the start. */
@@ -49,6 +51,7 @@ void Engine::create_instance()
 #ifdef __APPLE__
     /* Add to the end. */
     extension_names[extension_count - 1] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+    extension_names[extension_count - 1 - 1] = VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
 #endif /* __APPLE__ */
     SDL_memcpy(&extension_names[1], instance_extensions, instance_extension_count * sizeof(const char *));
     // for (int i{0}; i < instance_extension_count; i++) fprintf(stdout, "%s\n", extension_names[i]);
@@ -165,6 +168,12 @@ void Engine::create_logical_device()
 
     float queue_priority{1.0f};
     queue_create_info.pQueuePriorities = &queue_priority;
+    std::vector<const char *> extension_names{};
+#ifdef __APPLE__
+    /* [2025-9-15 11:07 AM ET] `VK_KHR_PORTABILITY_SUBSET( ... )` is currently defined in `vulkan_beta.h` (which can be used from `vulkan.h` by defining `VK_ENABLE_BETA_EXTENSIONS`). For now, we define the `VK_KHR_( ... )` macro below to avoid depending on beta. `VK_KHR_portability_subset` [[.](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_portability_subset.html)] is a _device_ extension that depends on the _instance_ extension `VK_KHR_get_physical( ... )2` enabled during instance creation. It is required by `vkCreateDevice` on macOS. */
+#define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
+    extension_names.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+#endif /* __APPLE__ */
     VkPhysicalDeviceFeatures enabled_features{};
 
     VkDeviceCreateInfo create_info{
@@ -177,8 +186,8 @@ void Engine::create_logical_device()
         // .enabledLayerCount{},
         /* `ppEnabledLayerNames` is deprecated and should not be used. */
         // .ppEnabledLayerNames{},
-        // .enabledExtensionCount{},
-        // .ppEnabledExtensionNames{},
+        .enabledExtensionCount{static_cast<uint32_t>(extension_names.size())},
+        .ppEnabledExtensionNames{extension_names.data()},
         .pEnabledFeatures{&enabled_features},
     };
 
