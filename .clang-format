@@ -1,6 +1,7 @@
 ﻿---
 Language: Cpp
-AccessModifierOffset: -2
+# AccessModifierOffset: -2 # Microsoft
+AccessModifierOffset: 0
 AlignAfterOpenBracket: Align
 AlignArrayOfStructures: None
 AlignConsecutiveAssignments:
@@ -137,7 +138,7 @@ ContinuationIndentWidth: 4
 Cpp11BracedListStyle: true
 DerivePointerAlignment: false
 DisableFormat: false
-EmptyLineAfterAccessModifier: Never
+EmptyLineAfterAccessModifier: Never # Microsoft
 EmptyLineBeforeAccessModifier: LogicalBlock
 ExperimentalAutoDetectBinPacking: false
 # FixNamespaceComments: true # Microsoft
@@ -164,8 +165,14 @@ IncludeCategories:
       CaseSensitive: false
 IncludeIsMainRegex: "(Test)?$"
 IncludeIsMainSourceRegex: ""
-# IndentAccessModifiers: false # Microsoft
-IndentAccessModifiers: true
+#
+#   There is an issue with struct indentation when setting this to `true`.
+#
+#   - [[.](https://github.com/llvm/llvm-project/issues/54333)]
+#   - [[.](https://github.com/llvm/llvm-project/issues/61631)]
+#   - [[.](https://github.com/llvm/llvm-project/issues/61978)]
+#
+IndentAccessModifiers: false # Microsoft
 IndentCaseBlocks: false
 IndentCaseLabels: false
 IndentExportBlock: true

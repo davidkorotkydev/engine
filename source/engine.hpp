@@ -1,6 +1,10 @@
 #pragma once
 
 /*
+    - `std::optional` [[.](https://en.cppreference.com/w/cpp/utility/optional.html)]
+*/
+#include <optional>
+/*
     - `std::runtime_error` [[.](https://en.cppreference.com/w/cpp/error/runtime_error.html)]
 */
 #include <stdexcept>
@@ -17,29 +21,42 @@
 class Engine
 {
     public:
-        /* These are are ordered by call. */
+    /* These are are ordered by call. */
 
-        void initialize();
-        void draw();
-        void event(SDL_Event *p_event);
-        void clean();
+    void initialize();
+    void draw();
+    void event(SDL_Event *p_event);
+    void clean();
 
     private:
-        /* The sections below are ordered by call, except where noted. */
+    struct Queue_Family_Indices
+    {
+        std::optional<uint32_t> graphics_family;
+        bool is_complete() { return graphics_family.has_value(); }
+    };
 
-        /* # `initialize` # */
+    /* The sections below are ordered by call, except where noted. */
 
-        void create_window();
-        /* * */ SDL_Window *p_window{nullptr};
-        /* * */ VkExtent2D window_extent{512 * 2, 342 * 2};
-        void create_instance();
-        /* * */ VkInstance instance;
+    /* # `initialize` # */
+
+    void create_window();
+    /* * */ SDL_Window *p_window{nullptr};
+    /* * */ VkExtent2D window_extent{512 * 2, 342 * 2};
+    void create_instance();
+    /* * */ VkInstance instance;
 #ifdef NDEBUG
-        /* * */ const bool validation_layers_enabled{false};
+    /* * */ const bool validation_layers_enabled{false};
 #else
-        /* * */ const bool validation_layers_enabled{true};
+    /* * */ const bool validation_layers_enabled{true};
 #endif
-        /* * */ bool validation_layers_supported();
-        /* * */ /* * */ const std::vector<const char *> validation_layers{"VK_LAYER_KHRONOS_validation"};
-        void create_debug_utils_messenger();
+    /* * */ bool validation_layers_supported();
+    /* * */ /* * */ const std::vector<const char *> validation_layers{"VK_LAYER_KHRONOS_validation"};
+    void create_debug_utils_messenger();
+    void pick_physical_device();
+    /* * */ VkPhysicalDevice physical_device{VK_NULL_HANDLE};
+    /* * */ bool physical_device_suitable(VkPhysicalDevice);
+    /* * */ /* * */ Queue_Family_Indices find_queue_families(VkPhysicalDevice);
+    void create_logical_device();
+    /* * */ VkDevice device;
+    /* * */ VkQueue graphics_queue;
 };

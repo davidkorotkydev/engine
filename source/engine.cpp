@@ -5,13 +5,15 @@ void Engine::initialize()
     create_window();
     create_instance();
     create_debug_utils_messenger();
+    pick_physical_device();
+    create_logical_device();
 }
 
 void Engine::create_window()
 {
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_WindowFlags window_flags{SDL_WINDOW_VULKAN};
-    p_window = SDL_CreateWindow("Hello, world.", window_extent.width, window_extent.height, window_flags);
+    SDL_WindowFlags flags{SDL_WINDOW_VULKAN};
+    p_window = SDL_CreateWindow("Hello, world.", window_extent.width, window_extent.height, flags);
     if (p_window == nullptr) throw std::runtime_error("The window could not be created.\n" + std::string(SDL_GetError()) + "\n");
 }
 
@@ -30,7 +32,7 @@ void Engine::create_instance()
     };
 
     VkInstanceCreateFlags flags{};
-    /* - [[.](https://wiki.libsdl.org/SDL3/SDL_Vulkan_GetInstanceExtensions)] */
+    /* [[.](https://wiki.libsdl.org/SDL3/SDL_Vulkan_GetInstanceExtensions)] */
     Uint32 instance_extension_count;
     const char *const *instance_extensions{SDL_Vulkan_GetInstanceExtensions(&instance_extension_count)};
     if (instance_extensions == nullptr) throw std::runtime_error("The required Vulkan instance extensions could not be found.\n");
@@ -74,26 +76,26 @@ void Engine::create_instance()
 
 bool Engine::validation_layers_supported()
 {
-    uint32_t property_count;
-    vkEnumerateInstanceLayerProperties(&property_count, nullptr);
-    std::vector<VkLayerProperties> layer_properties(property_count);
-    vkEnumerateInstanceLayerProperties(&property_count, layer_properties.data());
-    // for (int i{0}; i < property_count; i++) fprintf(stdout, "%s\n", layer_properties[i].layerName);
+    uint32_t count;
+    vkEnumerateInstanceLayerProperties(&count, nullptr);
+    std::vector<VkLayerProperties> properties(count);
+    vkEnumerateInstanceLayerProperties(&count, properties.data());
+    // for (int i{0}; i < count; i++) fprintf(stdout, "%s\n", properties[i].layerName);
 
     for (const auto &validation_layer : validation_layers)
     {
-        bool layer_found{false};
+        bool found{false};
 
-        for (const auto &layer_property : layer_properties)
+        for (const auto &property : properties)
         {
-            if (strcmp(validation_layer, layer_property.layerName) == 0)
+            if (strcmp(validation_layer, property.layerName) == 0)
             {
-                layer_found = true;
+                found = true;
                 break;
             }
         }
 
-        if (!layer_found) return false;
+        if (!found) return false;
     }
 
     return true;
@@ -101,6 +103,94 @@ bool Engine::validation_layers_supported()
 
 void Engine::create_debug_utils_messenger()
 {
+}
+
+void Engine::pick_physical_device()
+{
+    uint32_t count{0};
+    vkEnumeratePhysicalDevices(instance, &count, nullptr);
+    if (count == 0) throw std::runtime_error("No physical device with Vulkan support could be found.");
+    std::vector<VkPhysicalDevice> physical_devices(count);
+    vkEnumeratePhysicalDevices(instance, &count, physical_devices.data());
+
+    for (const auto &physical_device : physical_devices)
+    {
+        if (physical_device_suitable(physical_device))
+        {
+            this->physical_device = physical_device;
+            break;
+        }
+    }
+
+    if (this->physical_device == VK_NULL_HANDLE) throw std::runtime_error("A suitable physical device could not be found.");
+}
+
+bool Engine::physical_device_suitable(VkPhysicalDevice physical_device)
+{
+    Queue_Family_Indices indices{find_queue_families(physical_device)};
+    return indices.is_complete();
+}
+
+Engine::Queue_Family_Indices Engine::find_queue_families(VkPhysicalDevice physical_device)
+{
+    Queue_Family_Indices indices;
+    uint32_t count{0};
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
+    std::vector<VkQueueFamilyProperties> properties(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, properties.data());
+    int i{0};
+
+    for (const auto &property : properties)
+    {
+        if (property.queueFlags & VK_QUEUE_GRAPHICS_BIT) indices.graphics_family = i;
+        if (indices.is_complete()) break;
+        i++;
+    }
+
+    return indices;
+}
+
+void Engine::create_logical_device()
+{
+    Queue_Family_Indices indices{find_queue_families(physical_device)};
+
+    VkDeviceQueueCreateInfo queue_create_info{
+        .sType{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .queueFamilyIndex{indices.graphics_family.value()},
+        .queueCount{1},
+        // .pQueuePriorities{},
+    };
+
+    float queue_priority{1.0f};
+    queue_create_info.pQueuePriorities = &queue_priority;
+    VkPhysicalDeviceFeatures enabled_features{};
+
+    VkDeviceCreateInfo create_info{
+        .sType{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .queueCreateInfoCount{1},
+        .pQueueCreateInfos{&queue_create_info},
+        /* `enabledLayerCount` is deprecated and should not be used. */
+        // .enabledLayerCount{},
+        /* `ppEnabledLayerNames` is deprecated and should not be used. */
+        // .ppEnabledLayerNames{},
+        // .enabledExtensionCount{},
+        // .ppEnabledExtensionNames{},
+        .pEnabledFeatures{&enabled_features},
+    };
+
+    if (validation_layers_enabled)
+    {
+        /* Both `enabledLayerCount` and `ppEnabledLayerNames` are deprecated. We set them for compatibility with older versions of Vulkan. */
+        create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers.size());
+        create_info.ppEnabledLayerNames = validation_layers.data();
+    }
+
+    CHECK(vkCreateDevice(physical_device, &create_info, nullptr, &device));
+    vkGetDeviceQueue(device, indices.graphics_family.value(), 0, &graphics_queue);
 }
 
 void Engine::draw()
@@ -113,6 +203,8 @@ void Engine::event(SDL_Event *p_event)
 
 void Engine::clean()
 {
+    /* Device queues are destroyed when the device is destroyed. */
+    vkDestroyDevice(device, nullptr);
     vkDestroyInstance(instance, nullptr);
     SDL_DestroyWindow(p_window);
 }
