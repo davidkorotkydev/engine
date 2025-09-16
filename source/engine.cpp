@@ -5,8 +5,10 @@ void Engine::initialize()
     create_window();
     create_instance();
     create_debug_utils_messenger();
+    create_surface();
     pick_physical_device();
     create_logical_device();
+    create_swapchain();
 }
 
 void Engine::create_window()
@@ -108,6 +110,12 @@ void Engine::create_debug_utils_messenger()
 {
 }
 
+void Engine::create_surface()
+{
+    /* [[.](https://wiki.libsdl.org/SDL3/SDL_Vulkan_CreateSurface)] */
+    if (!SDL_Vulkan_CreateSurface(p_window, instance, nullptr, &surface)) throw std::runtime_error("The window surface could not be created.");
+}
+
 void Engine::pick_physical_device()
 {
     uint32_t count{0};
@@ -131,7 +139,16 @@ void Engine::pick_physical_device()
 bool Engine::physical_device_suitable(VkPhysicalDevice physical_device)
 {
     Queue_Family_Indices indices{find_queue_families(physical_device)};
-    return indices.is_complete();
+    bool extensions_supported{query_extension_support(physical_device)};
+    bool swapchain_adequate{false};
+
+    if (extensions_supported)
+    {
+        Swapchain_Support support{query_swapchain_support(physical_device)};
+        swapchain_adequate = !support.surface_formats.empty() && !support.present_modes.empty();
+    }
+
+    return indices.completed() && extensions_supported && swapchain_adequate;
 }
 
 Engine::Queue_Family_Indices Engine::find_queue_families(VkPhysicalDevice physical_device)
@@ -141,38 +158,98 @@ Engine::Queue_Family_Indices Engine::find_queue_families(VkPhysicalDevice physic
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
     std::vector<VkQueueFamilyProperties> properties(count);
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, properties.data());
-    int i{0};
+    int index{0};
 
     for (const auto &property : properties)
     {
-        if (property.queueFlags & VK_QUEUE_GRAPHICS_BIT) indices.graphics_family = i;
-        if (indices.is_complete()) break;
-        i++;
+        if (property.queueFlags & VK_QUEUE_GRAPHICS_BIT) indices.graphics_family = index;
+        VkBool32 supported{false};
+        vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, index, surface, &supported);
+        if (supported) indices.present_family = index;
+        if (indices.completed()) break;
+        index++;
     }
 
     return indices;
 }
 
+bool Engine::query_extension_support(VkPhysicalDevice physical_device)
+{
+    uint32_t count;
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, nullptr);
+    std::vector<VkExtensionProperties> properties(count);
+    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &count, properties.data());
+    bool all_supported{true};
+
+    for (const auto &device_extension : device_extensions)
+    {
+        bool supported{false};
+
+        for (const auto &property : properties)
+        {
+            if (strcmp(device_extension, property.extensionName) == 0)
+            {
+                supported = true;
+                break;
+            }
+        }
+
+        all_supported = all_supported || supported;
+    }
+
+    return all_supported;
+}
+
+Engine::Swapchain_Support Engine::query_swapchain_support(VkPhysicalDevice physical_device)
+{
+    Swapchain_Support details;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &details.surface_capabilities);
+    uint32_t format_count;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr);
+
+    if (format_count != 0)
+    {
+        details.surface_formats.resize(format_count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, details.surface_formats.data());
+    }
+
+    uint32_t mode_count;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &mode_count, nullptr);
+
+    if (mode_count != 0)
+    {
+        details.present_modes.resize(mode_count);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &mode_count, details.present_modes.data());
+    }
+
+    return details;
+}
+
 void Engine::create_logical_device()
 {
     Queue_Family_Indices indices{find_queue_families(physical_device)};
-
-    VkDeviceQueueCreateInfo queue_create_info{
-        .sType{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO},
-        // .pNext{},
-        // .flags{},
-        .queueFamilyIndex{indices.graphics_family.value()},
-        .queueCount{1},
-        // .pQueuePriorities{},
-    };
-
+    std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
+    std::set<uint32_t> queue_family_indices{indices.graphics_family.value(), indices.present_family.value()};
     float queue_priority{1.0f};
-    queue_create_info.pQueuePriorities = &queue_priority;
-    std::vector<const char *> extension_names{};
+
+    for (uint32_t queue_family_index : queue_family_indices)
+    {
+        VkDeviceQueueCreateInfo queue_create_info{
+            .sType{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO},
+            // .pNext{},
+            // .flags{},
+            .queueFamilyIndex{queue_family_index},
+            .queueCount{1},
+            .pQueuePriorities{&queue_priority},
+        };
+
+        queue_create_infos.push_back(queue_create_info);
+    }
+
 #ifdef __APPLE__
-    /* [2025-9-15 11:07 AM ET] `VK_KHR_PORTABILITY_SUBSET( ... )` is currently defined in `vulkan_beta.h` (which can be used from `vulkan.h` by defining `VK_ENABLE_BETA_EXTENSIONS`). For now, we define the `VK_KHR_( ... )` macro below to avoid depending on beta. `VK_KHR_portability_subset` [[.](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_portability_subset.html)] is a _device_ extension that depends on the _instance_ extension `VK_KHR_get_physical( ... )2` enabled during instance creation. It is required by `vkCreateDevice` on macOS. */
+    /* [2025-9-15 11:07 AM ET] `VK_KHR_PORTABILITY_SUBSET( ... )` is currently defined in `vulkan_beta.h` (which can be used from `vulkan.h` by defining `VK_ENABLE_BETA_EXTENSIONS`). `VK_KHR_portability_subset` [[.](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_portability_subset.html)] is a _device_ extension that depends on the _instance_ extension `VK_KHR_get_physical( ... )2` enabled during instance creation. It is required by `vkCreateDevice` on macOS. */
 #define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
-    extension_names.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+    device_extensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 #endif /* __APPLE__ */
     VkPhysicalDeviceFeatures enabled_features{};
 
@@ -180,14 +257,14 @@ void Engine::create_logical_device()
         .sType{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO},
         // .pNext{},
         // .flags{},
-        .queueCreateInfoCount{1},
-        .pQueueCreateInfos{&queue_create_info},
+        .queueCreateInfoCount{static_cast<uint32_t>(queue_create_infos.size())},
+        .pQueueCreateInfos{queue_create_infos.data()},
         /* `enabledLayerCount` is deprecated and should not be used. */
         // .enabledLayerCount{},
         /* `ppEnabledLayerNames` is deprecated and should not be used. */
         // .ppEnabledLayerNames{},
-        .enabledExtensionCount{static_cast<uint32_t>(extension_names.size())},
-        .ppEnabledExtensionNames{extension_names.data()},
+        .enabledExtensionCount{static_cast<uint32_t>(device_extensions.size())},
+        .ppEnabledExtensionNames{device_extensions.data()},
         .pEnabledFeatures{&enabled_features},
     };
 
@@ -200,6 +277,93 @@ void Engine::create_logical_device()
 
     CHECK(vkCreateDevice(physical_device, &create_info, nullptr, &device));
     vkGetDeviceQueue(device, indices.graphics_family.value(), 0, &graphics_queue);
+    vkGetDeviceQueue(device, indices.present_family.value(), 0, &present_queue);
+}
+
+void Engine::create_swapchain()
+{
+    Swapchain_Support support{query_swapchain_support(physical_device)};
+    VkSurfaceFormatKHR surface_format{choose_swap_surface_format(support.surface_formats)};
+    VkPresentModeKHR present_mode{choose_swap_present_mode(support.present_modes)};
+    VkExtent2D extent{choose_swap_extent(support.surface_capabilities)};
+    /* We request one more image than the minimum. */
+    uint32_t image_count{support.surface_capabilities.minImageCount + 1};
+    if (image_count > support.surface_capabilities.maxImageCount && support.surface_capabilities.maxImageCount > 0) image_count = support.surface_capabilities.maxImageCount;
+
+    VkSwapchainCreateInfoKHR create_info{
+        .sType{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR},
+        // .pNext{},
+        // .flags{},
+        .surface{surface},
+        .minImageCount{image_count},
+        .imageFormat{surface_format.format},
+        .imageColorSpace{surface_format.colorSpace},
+        .imageExtent{extent},
+        .imageArrayLayers{1},
+        .imageUsage{VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT},
+        // .imageSharingMode{},
+        // .queueFamilyIndexCount{},
+        // .pQueueFamilyIndices{},
+        .preTransform{support.surface_capabilities.currentTransform},
+        .compositeAlpha{VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR},
+        .presentMode{present_mode},
+        .clipped{VK_TRUE},
+        .oldSwapchain{VK_NULL_HANDLE},
+    };
+
+    Queue_Family_Indices indices{find_queue_families(physical_device)};
+    uint32_t queue_family_indices[]{indices.graphics_family.value(), indices.present_family.value()};
+
+    if (indices.graphics_family != indices.present_family)
+    {
+        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = queue_family_indices;
+    }
+    else
+    {
+        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    }
+
+    CHECK(vkCreateSwapchainKHR(device, &create_info, nullptr, &swapchain));
+}
+
+VkSurfaceFormatKHR Engine::choose_swap_surface_format(const std::vector<VkSurfaceFormatKHR> &surface_formats)
+{
+    for (const auto &surface_format : surface_formats)
+    {
+        if (surface_format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && surface_format.format == VK_FORMAT_B8G8R8A8_SRGB) return surface_format;
+    }
+
+    return surface_formats[0];
+}
+
+VkPresentModeKHR Engine::choose_swap_present_mode(const std::vector<VkPresentModeKHR> &present_modes)
+{
+    for (const auto &present_mode : present_modes)
+    {
+        if (present_mode == VK_PRESENT_MODE_MAILBOX_KHR) return present_mode;
+    }
+
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D Engine::choose_swap_extent(const VkSurfaceCapabilitiesKHR &surface_capabilities)
+{
+    if (surface_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) return surface_capabilities.currentExtent;
+    int w, h;
+    /*
+        The following functions are similar.
+
+        - `SDL_GetRenderOutputSize(SDL_Renderer *, ( ... ))` [[.](https://wiki.libsdl.org/SDL3/SDL_GetRenderOutputSize)]
+        - `SDL_GetWindowSize` [[.](https://wiki.libsdl.org/SDL3/SDL_GetWindowSize)]
+        - `SDL_GetWindowSizeInPixels` [[.](https://wiki.libsdl.org/SDL3/SDL_GetWindowSizeInPixels)]
+    */
+    SDL_GetWindowSizeInPixels(p_window, &w, &h);
+    VkExtent2D actual_extent{static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
+    actual_extent.width = std::clamp(actual_extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
+    actual_extent.height = std::clamp(actual_extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
+    return actual_extent;
 }
 
 void Engine::draw()
@@ -212,8 +376,10 @@ void Engine::event(SDL_Event *p_event)
 
 void Engine::clean()
 {
+    vkDestroySwapchainKHR(device, swapchain, nullptr);
     /* Device queues are destroyed when the device is destroyed. */
     vkDestroyDevice(device, nullptr);
+    vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
     SDL_DestroyWindow(p_window);
 }
