@@ -11,7 +11,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     }
     catch (const std::exception &exception)
     {
-        fprintf(stderr, "%s\n", exception.what());
+        fprintf(stderr, "%s", exception.what());
         return SDL_APP_FAILURE;
     }
 

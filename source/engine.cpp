@@ -10,6 +10,7 @@ void Engine::initialize()
     create_logical_device();
     create_swapchain();
     create_image_views();
+    create_graphics_pipeline();
 }
 
 void Engine::create_window()
@@ -22,7 +23,7 @@ void Engine::create_window()
 
 void Engine::create_instance()
 {
-    if (validation_layers_enabled && !query_validation_layer_support()) throw std::runtime_error("The requested validation layers are not supported.");
+    if (validation_layers_enabled && !query_validation_layer_support()) throw std::runtime_error("The requested validation layers are not supported.\n");
 
     VkApplicationInfo application_info{
         .sType{VK_STRUCTURE_TYPE_APPLICATION_INFO},
@@ -114,14 +115,14 @@ void Engine::create_debug_utils_messenger()
 void Engine::create_surface()
 {
     /* [[.](https://wiki.libsdl.org/SDL3/SDL_Vulkan_CreateSurface)] */
-    if (!SDL_Vulkan_CreateSurface(p_window, instance, nullptr, &surface)) throw std::runtime_error("The window surface could not be created.");
+    if (!SDL_Vulkan_CreateSurface(p_window, instance, nullptr, &surface)) throw std::runtime_error("The window surface could not be created.\n");
 }
 
 void Engine::choose_physical_device()
 {
     uint32_t count{0};
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
-    if (count == 0) throw std::runtime_error("No physical device with Vulkan support could be found.");
+    if (count == 0) throw std::runtime_error("No physical device with Vulkan support could be found.\n");
     std::vector<VkPhysicalDevice> physical_devices(count);
     vkEnumeratePhysicalDevices(instance, &count, physical_devices.data());
 
@@ -134,7 +135,7 @@ void Engine::choose_physical_device()
         }
     }
 
-    if (this->physical_device == VK_NULL_HANDLE) throw std::runtime_error("A suitable physical device could not be found.");
+    if (this->physical_device == VK_NULL_HANDLE) throw std::runtime_error("A suitable physical device could not be found.\n");
 }
 
 bool Engine::physical_device_suitable(VkPhysicalDevice physical_device)
@@ -407,6 +408,64 @@ void Engine::create_image_views()
 
         CHECK(vkCreateImageView(device, &create_info, nullptr, &swapchain_image_views[i]));
     }
+}
+
+void Engine::create_graphics_pipeline()
+{
+    VkShaderModule vert_shader_module{create_shader_module(read_file("bin/triangle.vert.spv"))};
+    VkShaderModule frag_shader_module{create_shader_module(read_file("bin/triangle.frag.spv"))};
+
+    VkPipelineShaderStageCreateInfo stages[]{
+        {
+            .sType{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+            // .pNext{},
+            // .flags{},
+            .stage{VK_SHADER_STAGE_VERTEX_BIT},
+            .module{vert_shader_module},
+            .pName{"main"},
+            // .pSpecializationInfo{},
+        },
+        {
+            .sType{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
+            // .pNext{},
+            // .flags{},
+            .stage{VK_SHADER_STAGE_FRAGMENT_BIT},
+            .module{frag_shader_module},
+            .pName{"main"},
+            // .pSpecializationInfo{},
+        },
+    };
+
+    vkDestroyShaderModule(device, frag_shader_module, nullptr);
+    vkDestroyShaderModule(device, vert_shader_module, nullptr);
+}
+
+std::vector<char> Engine::read_file(const std::string &file_name)
+{
+    std::ifstream file(file_name, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) throw std::runtime_error("`" + file_name + "` could not be opened.\n");
+    size_t file_size{(size_t)file.tellg()};
+    std::vector<char> buffer(file_size);
+    file.seekg(0);
+    file.read(buffer.data(), file_size);
+    file.close();
+    return buffer;
+}
+
+VkShaderModule Engine::create_shader_module(const std::vector<char> &code)
+{
+    VkShaderModule shader_module;
+
+    VkShaderModuleCreateInfo create_info{
+        .sType{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .codeSize{code.size()},
+        .pCode{reinterpret_cast<const uint32_t *>(code.data())},
+    };
+
+    CHECK(vkCreateShaderModule(device, &create_info, nullptr, &shader_module));
+    return shader_module;
 }
 
 void Engine::draw()

@@ -5,6 +5,10 @@
 */
 #include <algorithm>
 /*
+    - `std::ifstream` [[.](https://en.cppreference.com/w/cpp/io/basic_ifstream.html)]
+*/
+#include <fstream>
+/*
     - `std::optional` [[.](https://en.cppreference.com/w/cpp/utility/optional.html)]
 */
 #include <optional>
@@ -91,4 +95,7 @@ class Engine
     /* * */ VkExtent2D choose_swapchain_extent(const VkSurfaceCapabilitiesKHR &);
     void create_image_views();
     /* * */ std::vector<VkImageView> swapchain_image_views;
+    void create_graphics_pipeline();
+    /* * */ static std::vector<char> read_file(const std::string &);
+    /* * */ VkShaderModule create_shader_module(const std::vector<char> &);
 };
