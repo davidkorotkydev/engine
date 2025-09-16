@@ -6,9 +6,10 @@ void Engine::initialize()
     create_instance();
     create_debug_utils_messenger();
     create_surface();
-    pick_physical_device();
+    choose_physical_device();
     create_logical_device();
     create_swapchain();
+    create_image_views();
 }
 
 void Engine::create_window()
@@ -21,7 +22,7 @@ void Engine::create_window()
 
 void Engine::create_instance()
 {
-    if (validation_layers_enabled && !validation_layers_supported()) throw std::runtime_error("The requested validation layers are not supported.");
+    if (validation_layers_enabled && !query_validation_layer_support()) throw std::runtime_error("The requested validation layers are not supported.");
 
     VkApplicationInfo application_info{
         .sType{VK_STRUCTURE_TYPE_APPLICATION_INFO},
@@ -79,7 +80,7 @@ void Engine::create_instance()
     SDL_free(extension_names);
 }
 
-bool Engine::validation_layers_supported()
+bool Engine::query_validation_layer_support()
 {
     uint32_t count;
     vkEnumerateInstanceLayerProperties(&count, nullptr);
@@ -116,7 +117,7 @@ void Engine::create_surface()
     if (!SDL_Vulkan_CreateSurface(p_window, instance, nullptr, &surface)) throw std::runtime_error("The window surface could not be created.");
 }
 
-void Engine::pick_physical_device()
+void Engine::choose_physical_device()
 {
     uint32_t count{0};
     vkEnumeratePhysicalDevices(instance, &count, nullptr);
@@ -202,15 +203,15 @@ bool Engine::query_extension_support(VkPhysicalDevice physical_device)
 
 Engine::Swapchain_Support Engine::query_swapchain_support(VkPhysicalDevice physical_device)
 {
-    Swapchain_Support details;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &details.surface_capabilities);
+    Swapchain_Support support;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &support.surface_capabilities);
     uint32_t format_count;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr);
 
     if (format_count != 0)
     {
-        details.surface_formats.resize(format_count);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, details.surface_formats.data());
+        support.surface_formats.resize(format_count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, support.surface_formats.data());
     }
 
     uint32_t mode_count;
@@ -218,11 +219,11 @@ Engine::Swapchain_Support Engine::query_swapchain_support(VkPhysicalDevice physi
 
     if (mode_count != 0)
     {
-        details.present_modes.resize(mode_count);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &mode_count, details.present_modes.data());
+        support.present_modes.resize(mode_count);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &mode_count, support.present_modes.data());
     }
 
-    return details;
+    return support;
 }
 
 void Engine::create_logical_device()
@@ -283,9 +284,9 @@ void Engine::create_logical_device()
 void Engine::create_swapchain()
 {
     Swapchain_Support support{query_swapchain_support(physical_device)};
-    VkSurfaceFormatKHR surface_format{choose_swap_surface_format(support.surface_formats)};
-    VkPresentModeKHR present_mode{choose_swap_present_mode(support.present_modes)};
-    VkExtent2D extent{choose_swap_extent(support.surface_capabilities)};
+    VkSurfaceFormatKHR surface_format{choose_swapchain_surface_format(support.surface_formats)};
+    VkPresentModeKHR present_mode{choose_swapchain_present_mode(support.present_modes)};
+    VkExtent2D extent{choose_swapchain_extent(support.surface_capabilities)};
     /* We request one more image than the minimum. */
     uint32_t image_count{support.surface_capabilities.minImageCount + 1};
     if (image_count > support.surface_capabilities.maxImageCount && support.surface_capabilities.maxImageCount > 0) image_count = support.surface_capabilities.maxImageCount;
@@ -326,30 +327,40 @@ void Engine::create_swapchain()
     }
 
     CHECK(vkCreateSwapchainKHR(device, &create_info, nullptr, &swapchain));
+    vkGetSwapchainImagesKHR(device, swapchain, &image_count, nullptr);
+    swapchain_images.resize(image_count);
+    vkGetSwapchainImagesKHR(device, swapchain, &image_count, swapchain_images.data());
+    swapchain_image_format = surface_format.format;
+    swapchain_extent = extent;
 }
 
-VkSurfaceFormatKHR Engine::choose_swap_surface_format(const std::vector<VkSurfaceFormatKHR> &surface_formats)
+VkSurfaceFormatKHR Engine::choose_swapchain_surface_format(const std::vector<VkSurfaceFormatKHR> &surface_formats)
 {
     for (const auto &surface_format : surface_formats)
     {
         if (surface_format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && surface_format.format == VK_FORMAT_B8G8R8A8_SRGB) return surface_format;
     }
 
+    /* Otherwise, settle with the first format specified. */
     return surface_formats[0];
 }
 
-VkPresentModeKHR Engine::choose_swap_present_mode(const std::vector<VkPresentModeKHR> &present_modes)
+VkPresentModeKHR Engine::choose_swapchain_present_mode(const std::vector<VkPresentModeKHR> &present_modes)
 {
     for (const auto &present_mode : present_modes)
     {
         if (present_mode == VK_PRESENT_MODE_MAILBOX_KHR) return present_mode;
+        /* On mobile devices, where energy usage is more important, we may prefer to use `VK_PRESENT_MODE_FIFO_KHR`. */
     }
 
+    /* Only `VK_PRESENT_MODE_FIFO_KHR` is guaranteed to be available. */
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D Engine::choose_swap_extent(const VkSurfaceCapabilitiesKHR &surface_capabilities)
+VkExtent2D Engine::choose_swapchain_extent(const VkSurfaceCapabilitiesKHR &surface_capabilities)
 {
+    // fprintf(stdout, "%d %d\n", surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
+    // fprintf(stdout, "%d %d\n", surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
     if (surface_capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) return surface_capabilities.currentExtent;
     int w, h;
     /*
@@ -360,10 +371,42 @@ VkExtent2D Engine::choose_swap_extent(const VkSurfaceCapabilitiesKHR &surface_ca
         - `SDL_GetWindowSizeInPixels` [[.](https://wiki.libsdl.org/SDL3/SDL_GetWindowSizeInPixels)]
     */
     SDL_GetWindowSizeInPixels(p_window, &w, &h);
-    VkExtent2D actual_extent{static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
-    actual_extent.width = std::clamp(actual_extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
-    actual_extent.height = std::clamp(actual_extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
-    return actual_extent;
+    VkExtent2D extent{static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
+    extent.width = std::clamp(extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
+    extent.height = std::clamp(extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
+    return extent;
+}
+
+void Engine::create_image_views()
+{
+    swapchain_image_views.resize(swapchain_images.size());
+
+    for (size_t i{0}; i < swapchain_images.size(); i++)
+    {
+        VkImageViewCreateInfo create_info{
+            .sType{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO},
+            // .pNext{},
+            // .flags{},
+            .image{swapchain_images[i]},
+            .viewType{VK_IMAGE_VIEW_TYPE_2D},
+            .format{swapchain_image_format},
+            .components{
+                .r{VK_COMPONENT_SWIZZLE_IDENTITY},
+                .g{VK_COMPONENT_SWIZZLE_IDENTITY},
+                .b{VK_COMPONENT_SWIZZLE_IDENTITY},
+                .a{VK_COMPONENT_SWIZZLE_IDENTITY},
+            },
+            .subresourceRange{
+                .aspectMask{VK_IMAGE_ASPECT_COLOR_BIT},
+                .baseMipLevel{0},
+                .levelCount{1},
+                .baseArrayLayer{0},
+                .layerCount{1},
+            },
+        };
+
+        CHECK(vkCreateImageView(device, &create_info, nullptr, &swapchain_image_views[i]));
+    }
 }
 
 void Engine::draw()
@@ -376,6 +419,7 @@ void Engine::event(SDL_Event *p_event)
 
 void Engine::clean()
 {
+    for (const auto &image_view : swapchain_image_views) vkDestroyImageView(device, image_view, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
     /* Device queues are destroyed when the device is destroyed. */
     vkDestroyDevice(device, nullptr);

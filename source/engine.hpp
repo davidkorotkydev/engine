@@ -65,12 +65,12 @@ class Engine
 #else
     /* * */ const bool validation_layers_enabled{true};
 #endif
-    /* * */ bool validation_layers_supported();
+    /* * */ bool query_validation_layer_support();
     /* * */ /* * */ const std::vector<const char *> validation_layers{"VK_LAYER_KHRONOS_validation"};
     void create_debug_utils_messenger();
     void create_surface();
     /* * */ VkSurfaceKHR surface;
-    void pick_physical_device();
+    void choose_physical_device();
     /* * */ VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     /* * */ bool physical_device_suitable(VkPhysicalDevice);
     /* * */ /* * */ Queue_Family_Indices find_queue_families(VkPhysicalDevice);
@@ -82,8 +82,13 @@ class Engine
     /* * */ VkQueue graphics_queue;
     /* * */ VkQueue present_queue;
     void create_swapchain();
+    /* * */ VkExtent2D swapchain_extent;
+    /* * */ VkFormat swapchain_image_format;
     /* * */ VkSwapchainKHR swapchain;
-    /* * */ VkSurfaceFormatKHR choose_swap_surface_format(const std::vector<VkSurfaceFormatKHR> &);
-    /* * */ VkPresentModeKHR choose_swap_present_mode(const std::vector<VkPresentModeKHR> &);
-    /* * */ VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR &);
+    /* * */ std::vector<VkImage> swapchain_images;
+    /* * */ VkSurfaceFormatKHR choose_swapchain_surface_format(const std::vector<VkSurfaceFormatKHR> &);
+    /* * */ VkPresentModeKHR choose_swapchain_present_mode(const std::vector<VkPresentModeKHR> &);
+    /* * */ VkExtent2D choose_swapchain_extent(const VkSurfaceCapabilitiesKHR &);
+    void create_image_views();
+    /* * */ std::vector<VkImageView> swapchain_image_views;
 };
