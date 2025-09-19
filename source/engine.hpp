@@ -95,7 +95,11 @@ class Engine
     /* * */ VkExtent2D choose_swapchain_extent(const VkSurfaceCapabilitiesKHR &);
     void create_image_views();
     /* * */ std::vector<VkImageView> swapchain_image_views;
+    void create_render_pass();
+    /* * */ VkRenderPass render_pass;
     void create_graphics_pipeline();
+    /* * */ VkPipeline graphics_pipeline;
+    /* * */ VkPipelineLayout pipeline_layout;
     /* * */ static std::vector<char> read_file(const std::string &);
     /* * */ VkShaderModule create_shader_module(const std::vector<char> &);
 };

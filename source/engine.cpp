@@ -10,6 +10,7 @@ void Engine::initialize()
     create_logical_device();
     create_swapchain();
     create_image_views();
+    create_render_pass();
     create_graphics_pipeline();
 }
 
@@ -410,6 +411,55 @@ void Engine::create_image_views()
     }
 }
 
+void Engine::create_render_pass()
+{
+    VkAttachmentDescription attachment{
+        // .flags{},
+        .format{swapchain_image_format},
+        // clang-format off
+        // clang-format on
+        .samples{VK_SAMPLE_COUNT_1_BIT},
+        .loadOp{VK_ATTACHMENT_LOAD_OP_CLEAR},
+        .storeOp{VK_ATTACHMENT_STORE_OP_STORE},
+        .stencilLoadOp{VK_ATTACHMENT_LOAD_OP_DONT_CARE},
+        .stencilStoreOp{VK_ATTACHMENT_STORE_OP_DONT_CARE},
+        .initialLayout{VK_IMAGE_LAYOUT_UNDEFINED},
+        .finalLayout{VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
+    };
+
+    VkAttachmentReference color_attachment{
+        .attachment{0},
+        .layout{VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
+    };
+
+    VkSubpassDescription subpass{
+        // .flags{},
+        .pipelineBindPoint{VK_PIPELINE_BIND_POINT_GRAPHICS},
+        // .inputAttachmentCount{},
+        // .pInputAttachments{},
+        .colorAttachmentCount{1},
+        .pColorAttachments{&color_attachment},
+        // .pResolveAttachments{},
+        // .pDepthStencilAttachment{},
+        // .preserveAttachmentCount{},
+        // .pPreserveAttachments{},
+    };
+
+    VkRenderPassCreateInfo create_info{
+        .sType{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .attachmentCount{1},
+        .pAttachments{&attachment},
+        .subpassCount{1},
+        .pSubpasses{&subpass},
+        // .dependencyCount{},
+        // .pDependencies{},
+    };
+
+    CHECK(vkCreateRenderPass(device, &create_info, nullptr, &render_pass));
+}
+
 void Engine::create_graphics_pipeline()
 {
     VkShaderModule vert_shader_module{create_shader_module(read_file("bin/triangle.vert.spv"))};
@@ -436,6 +486,134 @@ void Engine::create_graphics_pipeline()
         },
     };
 
+    VkPipelineVertexInputStateCreateInfo vertex_input_state{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        /* This is optional. */ .vertexBindingDescriptionCount{0},
+        /* This is optional. */ .pVertexBindingDescriptions{nullptr},
+        /* This is optional. */ .vertexAttributeDescriptionCount{0},
+        /* This is optional. */ .pVertexAttributeDescriptions{nullptr},
+    };
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly_state{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .topology{VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
+        .primitiveRestartEnable{VK_FALSE},
+    };
+
+    VkPipelineViewportStateCreateInfo viewport_state{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .viewportCount{1},
+        // .pViewports{},
+        .scissorCount{1},
+        // .pScissors{},
+    };
+
+    VkPipelineRasterizationStateCreateInfo rasterization_state{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .depthClampEnable{VK_FALSE},
+        .rasterizerDiscardEnable{VK_FALSE},
+        .polygonMode{VK_POLYGON_MODE_FILL},
+        .cullMode{VK_CULL_MODE_BACK_BIT},
+        .frontFace{VK_FRONT_FACE_CLOCKWISE},
+        .depthBiasEnable{VK_FALSE},
+        /* This is optional. */ .depthBiasConstantFactor{0.0f},
+        /* This is optional. */ .depthBiasClamp{0.0f},
+        /* This is optional. */ .depthBiasSlopeFactor{0.0f},
+        .lineWidth{1.0f},
+    };
+
+    VkPipelineMultisampleStateCreateInfo multisample_state{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .rasterizationSamples{VK_SAMPLE_COUNT_1_BIT},
+        .sampleShadingEnable{VK_FALSE},
+        /* This is optional. */ .minSampleShading{1.0f},
+        /* This is optional. */ .pSampleMask{nullptr},
+        /* This is optional. */ .alphaToCoverageEnable{VK_FALSE},
+        /* This is optional. */ .alphaToOneEnable{VK_FALSE},
+    };
+
+    VkPipelineColorBlendAttachmentState attachment{
+        .blendEnable{VK_FALSE},
+        /* This is optional. */ .srcColorBlendFactor{VK_BLEND_FACTOR_ONE},
+        /* This is optional. */ .dstColorBlendFactor{VK_BLEND_FACTOR_ZERO},
+        /* This is optional. */ .colorBlendOp{VK_BLEND_OP_ADD},
+        /* This is optional. */ .srcAlphaBlendFactor{VK_BLEND_FACTOR_ONE},
+        /* This is optional. */ .dstAlphaBlendFactor{VK_BLEND_FACTOR_ZERO},
+        /* This is optional. */ .alphaBlendOp{VK_BLEND_OP_ADD},
+        .colorWriteMask{VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT},
+    };
+
+    VkPipelineColorBlendStateCreateInfo color_blend_state{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .logicOpEnable{VK_FALSE},
+        /* This is optional. */ .logicOp{VK_LOGIC_OP_COPY},
+        .attachmentCount{1},
+        .pAttachments{&attachment},
+        .blendConstants{
+            /* This is optional. */ 0.0f,
+            /* This is optional. */ 0.0f,
+            /* This is optional. */ 0.0f,
+            /* This is optional. */ 0.0f,
+        },
+    };
+
+    std::vector<VkDynamicState> dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+
+    VkPipelineDynamicStateCreateInfo dynamic_state{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .dynamicStateCount{static_cast<uint32_t>(dynamic_states.size())},
+        .pDynamicStates{dynamic_states.data()},
+    };
+
+    VkPipelineLayoutCreateInfo layout_create_info{
+        .sType{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        /* This is optional. */ .setLayoutCount{0},
+        /* This is optional. */ .pSetLayouts{nullptr},
+        /* This is optional. */ .pushConstantRangeCount{0},
+        /* This is optional. */ .pPushConstantRanges{nullptr},
+    };
+
+    CHECK(vkCreatePipelineLayout(device, &layout_create_info, nullptr, &pipeline_layout));
+
+    VkGraphicsPipelineCreateInfo create_info{
+        .sType{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+        .stageCount{2},
+        .pStages{stages},
+        .pVertexInputState{&vertex_input_state},
+        .pInputAssemblyState{&input_assembly_state},
+        // .pTessellationState{},
+        .pViewportState{&viewport_state},
+        .pRasterizationState{&rasterization_state},
+        .pMultisampleState{&multisample_state},
+        /* This is optional. */ .pDepthStencilState{nullptr},
+        .pColorBlendState{&color_blend_state},
+        .pDynamicState{&dynamic_state},
+        .layout{pipeline_layout},
+        .renderPass{render_pass},
+        .subpass{0},
+        /* This is optional. */ .basePipelineHandle{VK_NULL_HANDLE},
+        /* This is optional. */ .basePipelineIndex{-1},
+    };
+
+    CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &create_info, nullptr, &graphics_pipeline));
     vkDestroyShaderModule(device, frag_shader_module, nullptr);
     vkDestroyShaderModule(device, vert_shader_module, nullptr);
 }
@@ -478,6 +656,9 @@ void Engine::event(SDL_Event *p_event)
 
 void Engine::clean()
 {
+    vkDestroyPipeline(device, graphics_pipeline, nullptr);
+    vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
+    vkDestroyRenderPass(device, render_pass, nullptr);
     for (const auto &image_view : swapchain_image_views) vkDestroyImageView(device, image_view, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
     /* Device queues are destroyed when the device is destroyed. */
