@@ -130,7 +130,11 @@ BreakInheritanceList: BeforeColon
 BreakStringLiterals: true
 BreakTemplateDeclarations: MultiLine
 # ColumnLimit: 120 # Microsoft
-ColumnLimit: 640
+# ColumnLimit: 640
+#
+#   "A column limit of 0 means that there is no column limit."
+#
+ColumnLimit: 0
 CommentPragmas: "^ IWYU pragma:"
 CompactNamespaces: false
 ConstructorInitializerIndentWidth: 4

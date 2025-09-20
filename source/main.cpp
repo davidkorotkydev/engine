@@ -37,5 +37,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 /* This runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+    engine.device_wait_idle();
     engine.clean();
 }

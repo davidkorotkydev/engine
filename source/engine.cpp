@@ -12,6 +12,10 @@ void Engine::initialize()
     create_image_views();
     create_render_pass();
     create_graphics_pipeline();
+    create_framebuffers();
+    create_command_pool();
+    create_command_buffer();
+    create_sync_object();
 }
 
 void Engine::create_window()
@@ -54,7 +58,7 @@ void Engine::create_instance()
     /* Add this to the start. */
     extension_names[0] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 #ifdef __APPLE__
-    /* Add to the end. */
+    /* Add these to the end. */
     extension_names[extension_count - 1] = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
     extension_names[extension_count - 1 - 1] = VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
 #endif /* __APPLE__ */
@@ -141,7 +145,7 @@ void Engine::choose_physical_device()
 
 bool Engine::physical_device_suitable(VkPhysicalDevice physical_device)
 {
-    Queue_Family_Indices indices{find_queue_families(physical_device)};
+    Queue_Family_Index indices{find_queue_families(physical_device)};
     bool extensions_supported{query_extension_support(physical_device)};
     bool swapchain_adequate{false};
 
@@ -154,9 +158,9 @@ bool Engine::physical_device_suitable(VkPhysicalDevice physical_device)
     return indices.completed() && extensions_supported && swapchain_adequate;
 }
 
-Engine::Queue_Family_Indices Engine::find_queue_families(VkPhysicalDevice physical_device)
+Engine::Queue_Family_Index Engine::find_queue_families(VkPhysicalDevice physical_device)
 {
-    Queue_Family_Indices indices;
+    Queue_Family_Index indices;
     uint32_t count{0};
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &count, nullptr);
     std::vector<VkQueueFamilyProperties> properties(count);
@@ -230,7 +234,7 @@ Engine::Swapchain_Support Engine::query_swapchain_support(VkPhysicalDevice physi
 
 void Engine::create_logical_device()
 {
-    Queue_Family_Indices indices{find_queue_families(physical_device)};
+    Queue_Family_Index indices{find_queue_families(physical_device)};
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
     std::set<uint32_t> queue_family_indices{indices.graphics_family.value(), indices.present_family.value()};
     float queue_priority{1.0f};
@@ -250,7 +254,8 @@ void Engine::create_logical_device()
     }
 
 #ifdef __APPLE__
-    /* [2025-9-15 11:07 AM ET] `VK_KHR_PORTABILITY_SUBSET( ... )` is currently defined in `vulkan_beta.h` (which can be used from `vulkan.h` by defining `VK_ENABLE_BETA_EXTENSIONS`). `VK_KHR_portability_subset` [[.](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_portability_subset.html)] is a _device_ extension that depends on the _instance_ extension `VK_KHR_get_physical( ... )2` enabled during instance creation. It is required by `vkCreateDevice` on macOS. */
+    /* [2025-9-15 11:07 AM ET] `VK_KHR_PORTABILITY_SUBSET( ... )` is currently defined in `vulkan_beta.h` (which can be used from `vulkan.h` by defining `VK_ENABLE_BETA_EXTENSIONS`). `VK_KHR_portability_subset` [[.](https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_portability_subset.html)] is a _device_
+     * extension that depends on the _instance_ extension `VK_KHR_get_physical( ... )2` enabled during instance creation. It is required by `vkCreateDevice` on macOS. */
 #define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
     device_extensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 #endif /* __APPLE__ */
@@ -314,7 +319,7 @@ void Engine::create_swapchain()
         .oldSwapchain{VK_NULL_HANDLE},
     };
 
-    Queue_Family_Indices indices{find_queue_families(physical_device)};
+    Queue_Family_Index indices{find_queue_families(physical_device)};
     uint32_t queue_family_indices[]{indices.graphics_family.value(), indices.present_family.value()};
 
     if (indices.graphics_family != indices.present_family)
@@ -416,8 +421,6 @@ void Engine::create_render_pass()
     VkAttachmentDescription attachment{
         // .flags{},
         .format{swapchain_image_format},
-        // clang-format off
-        // clang-format on
         .samples{VK_SAMPLE_COUNT_1_BIT},
         .loadOp{VK_ATTACHMENT_LOAD_OP_CLEAR},
         .storeOp{VK_ATTACHMENT_STORE_OP_STORE},
@@ -445,6 +448,16 @@ void Engine::create_render_pass()
         // .pPreserveAttachments{},
     };
 
+    VkSubpassDependency dependency{
+        .srcSubpass{VK_SUBPASS_EXTERNAL},
+        .dstSubpass{0},
+        .srcStageMask{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT},
+        .dstStageMask{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT},
+        .srcAccessMask{0},
+        .dstAccessMask{VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT},
+        // .dependencyFlags{},
+    };
+
     VkRenderPassCreateInfo create_info{
         .sType{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO},
         // .pNext{},
@@ -453,8 +466,8 @@ void Engine::create_render_pass()
         .pAttachments{&attachment},
         .subpassCount{1},
         .pSubpasses{&subpass},
-        // .dependencyCount{},
-        // .pDependencies{},
+        .dependencyCount{1},
+        .pDependencies{&dependency},
     };
 
     CHECK(vkCreateRenderPass(device, &create_info, nullptr, &render_pass));
@@ -579,7 +592,7 @@ void Engine::create_graphics_pipeline()
         .pDynamicStates{dynamic_states.data()},
     };
 
-    VkPipelineLayoutCreateInfo layout_create_info{
+    VkPipelineLayoutCreateInfo pipeline_layout_create_info{
         .sType{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO},
         // .pNext{},
         // .flags{},
@@ -589,7 +602,7 @@ void Engine::create_graphics_pipeline()
         /* This is optional. */ .pPushConstantRanges{nullptr},
     };
 
-    CHECK(vkCreatePipelineLayout(device, &layout_create_info, nullptr, &pipeline_layout));
+    CHECK(vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &pipeline_layout));
 
     VkGraphicsPipelineCreateInfo create_info{
         .sType{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO},
@@ -646,8 +659,178 @@ VkShaderModule Engine::create_shader_module(const std::vector<char> &code)
     return shader_module;
 }
 
+void Engine::create_framebuffers()
+{
+    swapchain_framebuffers.resize(swapchain_image_views.size());
+
+    for (size_t i{0}; i < swapchain_image_views.size(); i++)
+    {
+        VkImageView attachments[]{swapchain_image_views[i]};
+
+        VkFramebufferCreateInfo create_info{
+            .sType{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO},
+            // .pNext{},
+            // .flags{},
+            .renderPass{render_pass},
+            .attachmentCount{1},
+            .pAttachments{attachments},
+            .width{swapchain_extent.width},
+            .height{swapchain_extent.height},
+            .layers{1},
+        };
+
+        CHECK(vkCreateFramebuffer(device, &create_info, nullptr, &swapchain_framebuffers[i]));
+    }
+}
+
+void Engine::create_command_pool()
+{
+    Queue_Family_Index queue_family_index{find_queue_families(physical_device)};
+
+    VkCommandPoolCreateInfo create_info{
+        .sType{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO},
+        // .pNext{},
+        .flags{VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT},
+        .queueFamilyIndex{queue_family_index.graphics_family.value()},
+    };
+
+    CHECK(vkCreateCommandPool(device, &create_info, nullptr, &command_pool));
+}
+
+void Engine::create_command_buffer()
+{
+    VkCommandBufferAllocateInfo allocate_info{
+        .sType{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO},
+        // .pNext{},
+        .commandPool{command_pool},
+        .level{VK_COMMAND_BUFFER_LEVEL_PRIMARY},
+        .commandBufferCount{1},
+    };
+
+    CHECK(vkAllocateCommandBuffers(device, &allocate_info, &command_buffer));
+}
+
+void Engine::create_sync_object()
+{
+    VkSemaphoreCreateInfo semaphore_create_info{
+        .sType{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO},
+        // .pNext{},
+        // .flags{},
+    };
+
+    VkFenceCreateInfo fence_create_info{
+        .sType{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO},
+        // .pNext{},
+        .flags{VK_FENCE_CREATE_SIGNALED_BIT},
+    };
+
+    CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &image_available_semaphore));
+    CHECK(vkCreateSemaphore(device, &semaphore_create_info, nullptr, &render_finished_semaphore));
+    CHECK(vkCreateFence(device, &fence_create_info, nullptr, &in_flight_fence));
+}
+
 void Engine::draw()
 {
+    CHECK(vkWaitForFences(device, 1, &in_flight_fence, VK_TRUE, UINT64_MAX));
+    CHECK(vkResetFences(device, 1, &in_flight_fence));
+    uint32_t image_index;
+    CHECK(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphore, VK_NULL_HANDLE, &image_index));
+    CHECK(vkResetCommandBuffer(command_buffer, 0));
+    record_command_buffer(command_buffer, image_index);
+    VkSemaphore wait_semaphores[]{image_available_semaphore};
+    VkPipelineStageFlags stage_mask[]{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSemaphore signal_semaphores[]{render_finished_semaphore};
+
+    VkSubmitInfo submit{
+        .sType{VK_STRUCTURE_TYPE_SUBMIT_INFO},
+        // .pNext{},
+        .waitSemaphoreCount{1},
+        .pWaitSemaphores{wait_semaphores},
+        .pWaitDstStageMask{stage_mask},
+        .commandBufferCount{1},
+        .pCommandBuffers{&command_buffer},
+        .signalSemaphoreCount{1},
+        .pSignalSemaphores{signal_semaphores},
+    };
+
+    CHECK(vkQueueSubmit(graphics_queue, 1, &submit, in_flight_fence));
+    VkSwapchainKHR swapchains[]{swapchain};
+
+    VkPresentInfoKHR present_info{
+        .sType{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR},
+        // .pNext{},
+        .waitSemaphoreCount{1},
+        .pWaitSemaphores{signal_semaphores},
+        .swapchainCount{1},
+        .pSwapchains{swapchains},
+        .pImageIndices{&image_index},
+        /* This is optional. */ .pResults{nullptr},
+    };
+
+    CHECK(vkQueuePresentKHR(present_queue, &present_info));
+}
+
+void Engine::record_command_buffer(VkCommandBuffer command_buffer, uint32_t image_index)
+{
+    VkCommandBufferBeginInfo begin_info{
+        .sType{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO},
+        // .pNext{},
+        /* This is optional. */ .flags{0},
+        /* This is optional. */ .pInheritanceInfo{nullptr},
+    };
+
+    CHECK(vkBeginCommandBuffer(command_buffer, &begin_info));
+
+    {
+        VkClearValue clear_value{{{
+            0.0f,
+            0.0f,
+            0.0f,
+            1.0f,
+        }}};
+
+        VkRenderPassBeginInfo render_pass_begin{
+            .sType{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO},
+            // .pNext{},
+            .renderPass{render_pass},
+            .framebuffer{swapchain_framebuffers[image_index]},
+            .renderArea{
+                .offset{0, 0},
+                .extent{swapchain_extent},
+            },
+            .clearValueCount{1},
+            .pClearValues{&clear_value},
+        };
+
+        vkCmdBeginRenderPass(command_buffer, &render_pass_begin, VK_SUBPASS_CONTENTS_INLINE);
+
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+
+            VkViewport viewport{
+                .x{0.0f},
+                .y{0.0f},
+                .width{static_cast<float>(swapchain_extent.width)},
+                .height{static_cast<float>(swapchain_extent.height)},
+                .minDepth{0.0f},
+                .maxDepth{1.0f},
+            };
+
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+
+            VkRect2D scissor{
+                .offset{0, 0},
+                .extent{swapchain_extent},
+            };
+
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+            vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        }
+
+        vkCmdEndRenderPass(command_buffer);
+    }
+
+    CHECK(vkEndCommandBuffer(command_buffer));
 }
 
 void Engine::event(SDL_Event *p_event)
@@ -656,6 +839,11 @@ void Engine::event(SDL_Event *p_event)
 
 void Engine::clean()
 {
+    vkDestroySemaphore(device, image_available_semaphore, nullptr);
+    vkDestroySemaphore(device, render_finished_semaphore, nullptr);
+    vkDestroyFence(device, in_flight_fence, nullptr);
+    vkDestroyCommandPool(device, command_pool, nullptr);
+    for (const auto &framebuffer : swapchain_framebuffers) vkDestroyFramebuffer(device, framebuffer, nullptr);
     vkDestroyPipeline(device, graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
     vkDestroyRenderPass(device, render_pass, nullptr);

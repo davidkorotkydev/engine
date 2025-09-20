@@ -40,8 +40,14 @@ class Engine
     void event(SDL_Event *p_event);
     void clean();
 
+    void device_wait_idle()
+    {
+        if (device == VK_NULL_HANDLE) throw std::runtime_error("The logical device does not exist.\n");
+        CHECK(vkDeviceWaitIdle(device));
+    }
+
     private:
-    struct Queue_Family_Indices
+    struct Queue_Family_Index
     {
         std::optional<uint32_t> graphics_family;
         std::optional<uint32_t> present_family;
@@ -77,12 +83,12 @@ class Engine
     void choose_physical_device();
     /* * */ VkPhysicalDevice physical_device{VK_NULL_HANDLE};
     /* * */ bool physical_device_suitable(VkPhysicalDevice);
-    /* * */ /* * */ Queue_Family_Indices find_queue_families(VkPhysicalDevice);
+    /* * */ /* * */ Queue_Family_Index find_queue_families(VkPhysicalDevice);
     /* * */ /* * */ bool query_extension_support(VkPhysicalDevice);
     /* * */ /* * */ /* * */ std::vector<const char *> device_extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     /* * */ /* * */ Swapchain_Support query_swapchain_support(VkPhysicalDevice);
     void create_logical_device();
-    /* * */ VkDevice device;
+    /* * */ VkDevice device{VK_NULL_HANDLE};
     /* * */ VkQueue graphics_queue;
     /* * */ VkQueue present_queue;
     void create_swapchain();
@@ -102,4 +108,18 @@ class Engine
     /* * */ VkPipelineLayout pipeline_layout;
     /* * */ static std::vector<char> read_file(const std::string &);
     /* * */ VkShaderModule create_shader_module(const std::vector<char> &);
+    void create_framebuffers();
+    /* * */ std::vector<VkFramebuffer> swapchain_framebuffers;
+    void create_command_pool();
+    /* * */ VkCommandPool command_pool;
+    void create_command_buffer();
+    /* * */ VkCommandBuffer command_buffer;
+    void create_sync_object();
+    /* * */ VkFence in_flight_fence;
+    /* * */ VkSemaphore image_available_semaphore;
+    /* * */ VkSemaphore render_finished_semaphore;
+
+    /* # `draw` # */
+
+    void record_command_buffer(VkCommandBuffer, uint32_t);
 };
